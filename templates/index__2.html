@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Cropper</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f8f9fa;
+            color: #495057;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #343a40;
+            margin-bottom: 30px;
+        }
+
+        .container {
+            margin-top: 40px;
+        }
+
+        .image-container {
+            position: relative;
+            display: inline-block;
+            margin: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .image-container img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            transition: transform 0.3s ease;
+        }
+
+        .image-container img:hover {
+            transform: scale(1.05);
+        }
+
+        .crop-box {
+            position: absolute;
+            border: 3px dashed rgba(255, 0, 0, 0.7);
+            pointer-events: none;
+            border-radius: 4px;
+        }
+
+        .point {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: #ff6347;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s ease;
+        }
+
+        .point:hover {
+            transform: scale(1.2);
+        }
+
+        .modal-content {
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-header, .modal-footer {
+            border: none;
+        }
+
+        .btn-close {
+            color: #ff6347;
+        }
+
+        .btn-primary {
+            background-color: #ff6347;
+            border: none;
+        }
+
+        .btn-primary:hover {
+            background-color: #e04e3a;
+        }
+
+        .btn-secondary {
+            background-color: #ddd;
+        }
+
+        .btn-secondary:hover {
+            background-color: #bbb;
+        }
+
+        #crop-coordinates {
+            font-size: 14px;
+            color: #888;
+        }
+
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .col-md-4 {
+            flex: 0 0 30%;
+            margin-bottom: 20px;
+        }
+
+        .alert {
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center">Images</h1>
+        <div class="row">
+            {% for image in images %}
+                <div class="col-md-4 image-container" id="img-{{ image.file }}">
+                    <img src="{{ url_for('static', filename='images/' + image.file) }}" alt="{{ image.file }}" class="img-fluid" id="image-{{ image.file }}" onclick="openCropModal('{{ image.file }}')">
+                    <div class="crop-box" id="crop-box-{{ image.file }}"
+                        style="top: {{ image.crop_coords[1] * 480 }}px; 
+                               left: {{ image.crop_coords[0] * 640 }}px; 
+                               width: {{ (image.crop_coords[2]) * 640 }}px; 
+                               height: {{ (image.crop_coords[3])* 480 }}px;">
+                    </div>
+                    <button class="btn btn-primary mt-2 w-100" onclick="setCrop('{{ image.file }}')">Set Crop</button>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Modal for selecting crop points -->
+    <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cropModalLabel">Select Crop Points</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="image-container">
+                        <img id="crop-image" src="" alt="Select Crop Points" class="img-fluid">
+                        <div id="point1" class="point" style="display:none;"></div>
+                        <div id="point2" class="point" style="display:none;"></div>
+                        <div id="point3" class="point" style="display:none;"></div>
+                        <div id="point4" class="point" style="display:none;"></div>
+                    </div>
+                    <p id="crop-coordinates" class="mt-2"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="saveCrop()">Save Crop</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let cropPoints = [];
+        let currentImage = '';
+
+        // Open the crop modal and prepare the image for cropping
+        function openCropModal(imageFile) {
+            currentImage = imageFile;
+            const imgSrc = document.getElementById(`image-${imageFile}`).src;
+            document.getElementById('crop-image').src = imgSrc;
+
+            // Show the modal
+            const modal = new bootstrap.Modal(document.getElementById('cropModal'));
+            modal.show();
+
+            // Reset points
+            cropPoints = [];
+            document.getElementById('crop-coordinates').innerHTML = '';
+
+            // Set up click event for image
+            document.getElementById('crop-image').onclick = function(event) {
+                if (cropPoints.length < 4) {
+                    const rect = event.target.getBoundingClientRect();
+                    const x = (event.clientX - rect.left) / rect.width;
+                    const y = (event.clientY - rect.top) / rect.height;
+                    addPoint(x, y);
+                }
+            };
+        }
+
+        // Add the selected point to the list and display it
+        function addPoint(x, y) {
+            cropPoints.push({ x, y });
+
+            const point = document.getElementById(`point${cropPoints.length}`);
+            point.style.left = `${x * 100}%`;
+            point.style.top = `${y * 100}%`;
+            point.style.display = 'block';
+
+            if (cropPoints.length === 4) {
+                const [p1, p2, p3, p4] = cropPoints;
+                document.getElementById('crop-coordinates').innerHTML = `
+                    Top-left: (${p1.x.toFixed(2)}, ${p1.y.toFixed(2)})<br>
+                    Top-right: (${p2.x.toFixed(2)}, ${p2.y.toFixed(2)})<br>
+                    Bottom-left: (${p3.x.toFixed(2)}, ${p3.y.toFixed(2)})<br>
+                    Bottom-right: (${p4.x.toFixed(2)}, ${p4.y.toFixed(2)})
+                `;
+            }
+        }
+
+        // Save the crop data and send it to the server
+        // Save the crop data and send it to the server
+        function saveCrop() {
+            if (cropPoints.length === 4) {
+                const cropData = {
+                    crop_coords: cropPoints
+                };
+
+                console.log("Sending crop data for image:", currentImage); // Debugging line
+
+                fetch(`https://crop-images.searches.cam/crop/${currentImage}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(cropData)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        alert('Crop coordinates saved: ' + JSON.stringify(data.cropped_area));
+                    } else {
+                        alert('Failed to save crop data');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while saving the crop data');
+                });
+            } else {
+                alert('Please select 4 points to define the crop area');
+            }
+        }
+
+    </script>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.10.0/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.min.js"></script>
+</body>
+</html>
